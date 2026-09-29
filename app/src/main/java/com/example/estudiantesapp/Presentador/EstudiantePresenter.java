@@ -1,128 +1,152 @@
 package com.example.estudiantesapp.Presentador;
 
-import com.example.estudiantesapp.Vista.MainActivityView;
 import com.example.estudiantesapp.Modelo.Estudiante;
 import com.example.estudiantesapp.Modelo.EstudianteBecado;
+import com.example.estudiantesapp.Vista.MainActivityView;
+
+import java.util.Locale;
 
 /**
- * Presentador (MVP): conecta la Vista con el Modelo. Convierte el texto
- * que escribe el usuario en números, se los pasa al Estudiante, y regresa
- * los resultados ya formateados a la Vista.
+ * Presentador (MVP): conecta la Vista con el Modelo. Convierte el texto que
+ * escribe el usuario en números, se los pasa al Estudiante, y regresa los
+ * resultados ya formateados a la Vista (incluyendo los textos de estado).
  *
  * Autor: Gerardo Cruz Hernández
  */
 public class EstudiantePresenter {
 
-    private MainActivityView vista;
+    private final MainActivityView vista;
     private Estudiante estudiante;
 
     public EstudiantePresenter(MainActivityView vista) {
         this.vista = vista;
     }
 
-    // Crea el Estudiante (o EstudianteBecado) y registra sus notas.
-    // Regresa true/false para que la Vista sepa si debe seguir calculando o no.
-    public boolean registrarEstudiante(String nombre, String[] notasTexto, boolean esBecado, String porcentajeBecaTexto) {
+    // Regresa los nombres de las materias fijas para que la Vista arme sus filas.
+    public String[] ObtenerMaterias() {
+        return Estudiante.ObtenerMaterias();
+    }
+
+    // Crea el Estudiante (o EstudianteBecado), registra sus notas y muestra
+    // los resultados. Regresa true/false para que la Vista sepa si salió bien.
+    public boolean RegistrarEstudiante(String nombre, String[] notasTexto,
+                                       boolean esBecado, String colegiaturaTexto) {
         try {
-            int cantidad = notasTexto.length;
+            Estudiante nuevo;
 
             if (esBecado) {
-                float porcentaje;
-                if (porcentajeBecaTexto.trim().isEmpty()) {
-                    porcentaje = 0;
-                } else {
-                    porcentaje = Float.parseFloat(porcentajeBecaTexto);
+                if (colegiaturaTexto.trim().isEmpty()) {
+                    vista.MostrarError("Escribe la colegiatura del estudiante becado");
+                    return false;
                 }
-                estudiante = new EstudianteBecado(nombre, cantidad, porcentaje);
+                float colegiatura = Float.parseFloat(colegiaturaTexto.trim());
+                nuevo = new EstudianteBecado(nombre, colegiatura);
             } else {
-                estudiante = new Estudiante(nombre, cantidad);
+                nuevo = new Estudiante(nombre);
             }
 
-            for (int i = 0; i < cantidad; i++) {
-                float valor = Float.parseFloat(notasTexto[i]);
-                estudiante.registrarCalificacion(i, valor);
+            String[] materias = Estudiante.ObtenerMaterias();
+
+            if (notasTexto.length != materias.length) {
+                vista.MostrarError("Faltan calificaciones por capturar");
+                return false;
             }
 
-            vista.mostrarNombre(estudiante.getNombre());
+            for (int i = 0; i < notasTexto.length; i++) {
+                if (notasTexto[i].trim().isEmpty()) {
+                    vista.MostrarError("Escribe la calificación de " + materias[i]);
+                    return false;
+                }
+                float valor = Float.parseFloat(notasTexto[i].trim());
+                nuevo.RegistrarCalificacion(i, valor);
+            }
+
+            // Solo se reemplaza el estudiante anterior si todo salió bien.
+            estudiante = nuevo;
+            MostrarResultados();
             return true;
 
         } catch (NumberFormatException e) {
-            vista.mostrarError("Verifica que las calificaciones sean números válidos");
+            vista.MostrarError("Verifica que las calificaciones y la colegiatura sean números válidos");
             return false;
         } catch (IllegalArgumentException e) {
-            vista.mostrarError(e.getMessage());
+            vista.MostrarError(e.getMessage());
             return false;
         }
     }
 
-    // Pide el promedio al Modelo y lo manda a mostrar.
-    public void calcularPromedio() {
-        if (estudiante == null) {
-            return;
-        }
-        float promedio = estudiante.calcularPromedio();
-        vista.mostrarPromedio(String.format("%.2f", promedio));
-    }
+    // Pide todos los datos al Modelo y se los manda ya formateados a la Vista.
+    private void MostrarResultados() {
+        String[] materias = Estudiante.ObtenerMaterias();
+        int total = materias.length;
+        int cantidadReprobadas = estudiante.ContarReprobadas();
 
-    // Pide la nota más alta al Modelo y la manda a mostrar.
-    public void buscarNotaMaxima() {
-        if (estudiante == null) {
-            return;
-        }
-        float maxima = estudiante.buscarNotaMaxima();
-        vista.mostrarNotaMaxima(String.format("%.2f", maxima));
-    }
+        String[] notas = new String[total];
+        String[] etiquetas = new String[total];
+        boolean[] reprobadas = new boolean[total];
 
-    // Pide la nota más baja (método recursivo) al Modelo y la manda a mostrar.
-    public void buscarNotaMinima() {
-        if (estudiante == null) {
-            return;
-        }
-        float minima = estudiante.buscarNotaMinimaRecursiva(0);
-        vista.mostrarNotaMinima(String.format("%.2f", minima));
-    }
-
-    // Pide cuántas notas aprobaron y lo manda a mostrar.
-    public void contarAprobadas() {
-        if (estudiante == null) {
-            return;
-        }
-        int cantidad = estudiante.contarAprobadas();
-        vista.mostrarAprobadas(cantidad);
-    }
-
-    // Pide el estado final (Aprobado/Reprobado) y lo manda a mostrar.
-    public void obtenerEstadoFinal() {
-        if (estudiante == null) {
-            return;
-        }
-        String estado = estudiante.obtenerEstadoFinal();
-        vista.mostrarEstadoFinal(estado);
-    }
-
-    // Calcula cuánto paga el estudiante de colegiatura, solo si es becado
-    // (se verifica con instanceof). Si no es becado, avisa que no aplica.
-    public void calcularMontoAPagar(String colegiaturaTexto) {
-        if (estudiante == null) {
-            return;
+        for (int i = 0; i < total; i++) {
+            notas[i] = Formato(estudiante.GetCalificacion(i));
+            reprobadas[i] = estudiante.EstaReprobada(i);
+            etiquetas[i] = reprobadas[i] ? "Reprobada" : "Aprobada";
         }
 
-        if (!(estudiante instanceof EstudianteBecado)) {
-            vista.mostrarMontoAPagar("No aplica (no es becado)");
-            return;
-        }
+        vista.MostrarNombre(estudiante.GetNombre());
+        vista.MostrarEstado(ArmarEstadoFinal(materias, reprobadas, cantidadReprobadas),
+                cantidadReprobadas == 0);
+        vista.MostrarCalificaciones(materias, notas, etiquetas, reprobadas);
 
-        try {
-            float colegiatura = Float.parseFloat(colegiaturaTexto);
+        vista.MostrarPromedio(Formato(estudiante.CalcularPromedio()));
+        vista.MostrarNotaMaxima(Formato(estudiante.BuscarNotaMaxima()));
+
+        // Método recursivo: regresa la posición de la nota más baja.
+        int posicionMinima = estudiante.BuscarPosicionNotaMinimaRecursiva(0);
+        vista.MostrarNotaMinima(materias[posicionMinima]
+                + " (" + Formato(estudiante.GetCalificacion(posicionMinima)) + ")");
+
+        vista.MostrarAprobadas(total - cantidadReprobadas);
+        vista.MostrarReprobadas(cantidadReprobadas);
+
+        // La beca solo aplica si el estudiante es EstudianteBecado (instanceof).
+        if (estudiante instanceof EstudianteBecado) {
             EstudianteBecado becado = (EstudianteBecado) estudiante;
-
-            float porcentaje = becado.getPorcentajeBeca();
-            float monto = becado.calcularMontoAPagar(colegiatura);
-
-            vista.mostrarMontoAPagar("Beca: " + porcentaje + "% | Monto a pagar: $" + String.format("%.2f", monto));
-
-        } catch (NumberFormatException e) {
-            vista.mostrarError("Verifica que la colegiatura sea un número válido");
+            vista.MostrarBeca(becado.ObtenerEstadoBeca());
+            vista.MostrarMontoAPagar("Colegiatura: $" + Formato(becado.GetColegiatura())
+                    + " | Beca: " + becado.CalcularPorcentajeBeca() + "%"
+                    + " | A pagar: $" + Formato(becado.CalcularMontoAPagar()));
+        } else {
+            vista.MostrarBeca("No aplica (no es becado)");
+            vista.MostrarMontoAPagar("No aplica (no es becado)");
         }
+    }
+
+    // Arma el texto del estado del semestre. Si hay materias reprobadas,
+    // las lista como "A y B" o "A, B y C". Primera línea: estado; segunda: detalle.
+    private String ArmarEstadoFinal(String[] materias, boolean[] reprobadas, int cantidadReprobadas) {
+        if (cantidadReprobadas == 0) {
+            return "Aprobado";
+        }
+
+        String texto = "";
+        int encontradas = 0;
+
+        for (int i = 0; i < materias.length; i++) {
+            if (reprobadas[i]) {
+                encontradas = encontradas + 1;
+                if (encontradas == 1) {
+                    texto = materias[i];
+                } else if (encontradas == cantidadReprobadas) {
+                    texto = texto + " y " + materias[i];
+                } else {
+                    texto = texto + ", " + materias[i];
+                }
+            }
+        }
+        return "Pendiente\nPara aprobar el semestre debe aprobar: " + texto;
+    }
+
+    // Da formato de dos decimales a un número.
+    private String Formato(float valor) {
+        return String.format(Locale.US, "%.2f", valor);
     }
 }
